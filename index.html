@@ -422,6 +422,99 @@
 
     .zoom-btn:active { background: rgba(255,255,255,0.12); }
 
+    /* ── MENU BUTTON ── */
+    #btn-menu {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      color: var(--text);
+      width: 36px; height: 36px;
+      font-size: 18px;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    #btn-menu:active { background: rgba(255,255,255,0.14); }
+
+    /* ── EXPORT PANEL ── */
+    #export-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: flex-end;
+      justify-content: center;
+    }
+    #export-overlay.open { display: flex; }
+
+    #export-sheet {
+      background: var(--surface-solid);
+      border: 1px solid rgba(244,160,28,0.2);
+      border-bottom: none;
+      border-radius: 16px 16px 0 0;
+      width: 100%;
+      max-width: 480px;
+      padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+      animation: slideUp 0.25s ease-out;
+    }
+
+    #export-sheet h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 2px;
+      color: var(--amber);
+      margin-bottom: 4px;
+    }
+
+    #export-subtitle {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    .export-btn {
+      width: 100%;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Oswald', sans-serif;
+      font-size: 15px;
+      letter-spacing: 1.5px;
+      padding: 15px 16px;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      transition: opacity 0.15s;
+      text-align: left;
+    }
+    .export-btn:active { opacity: 0.75; }
+    .export-btn.csv  { background: #1e3a2f; color: #5cba6e; border: 1px solid rgba(92,186,110,0.25); }
+    .export-btn.json { background: #1e2f3a; color: #5aaadf; border: 1px solid rgba(90,170,223,0.25); }
+    .export-btn.import { background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.1); }
+    .export-btn .btn-icon { font-size: 20px; flex-shrink: 0; }
+    .btn-desc { display: flex; flex-direction: column; gap: 2px; }
+    .btn-desc span { font-size: 10px; font-family: 'JetBrains Mono', monospace; opacity: 0.7; letter-spacing: 0; font-weight: 400; }
+
+    #btn-close-export {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 10px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    /* hidden file input */
+    #import-input { display: none; }
+
   </style>
 </head>
 <body>
@@ -438,6 +531,42 @@
     <button id="btn-next" title="Día siguiente" disabled>›</button>
   </div>
   <div id="pin-count"><span id="count-num">0</span> pts</div>
+  <button id="btn-menu" title="Exportar / Importar">⋮</button>
+</div>
+
+<!-- EXPORT PANEL -->
+<div id="export-overlay">
+  <div id="export-sheet">
+    <h2>DATOS</h2>
+    <div id="export-subtitle">Exporta o importa todos tus puntos</div>
+
+    <button class="export-btn csv" id="btn-export-csv">
+      <span class="btn-icon">📊</span>
+      <div class="btn-desc">
+        EXPORTAR CSV
+        <span>Excel · con enlaces al Catastro por cada punto</span>
+      </div>
+    </button>
+
+    <button class="export-btn json" id="btn-export-json">
+      <span class="btn-icon">📦</span>
+      <div class="btn-desc">
+        EXPORTAR JSON
+        <span>Backup completo · incluye notas de voz</span>
+      </div>
+    </button>
+
+    <button class="export-btn import" id="btn-import-json">
+      <span class="btn-icon">📥</span>
+      <div class="btn-desc">
+        IMPORTAR JSON
+        <span>Restaurar datos desde un backup</span>
+      </div>
+    </button>
+
+    <input type="file" id="import-input" accept=".json">
+    <button id="btn-close-export">✕ Cerrar</button>
+  </div>
 </div>
 
 <!-- ZOOM BUTTONS -->
@@ -860,13 +989,99 @@ function showToast(msg) {
 }
 
 // ════════════════════════════════════════
+//  EXPORT / IMPORT
+// ════════════════════════════════════════
+
+document.getElementById('btn-menu').addEventListener('click', () => {
+  document.getElementById('export-overlay').classList.add('open');
+});
+document.getElementById('btn-close-export').addEventListener('click', () => {
+  document.getElementById('export-overlay').classList.remove('open');
+});
+document.getElementById('export-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('export-overlay'))
+    document.getElementById('export-overlay').classList.remove('open');
+});
+
+// ── EXPORT CSV ──
+document.getElementById('btn-export-csv').addEventListener('click', () => {
+  const data = getData();
+  const rows = [
+    ['Fecha','Hora','Latitud','Longitud','Nota_voz','URL_Catastro','URL_Maps']
+  ];
+  Object.keys(data).sort().forEach(day => {
+    data[day].forEach(pin => {
+      const catastro = `https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?buscar=S&latitud=${pin.lat}&longitud=${pin.lng}`;
+      const gmaps = `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+      rows.push([
+        day,
+        pin.time,
+        pin.lat.toFixed(7),
+        pin.lng.toFixed(7),
+        pin.audio ? `Si (${pin.duration || '?'})` : 'No',
+        catastro,
+        gmaps
+      ]);
+    });
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const BOM = '\uFEFF';
+  downloadBlob(BOM + csv, `terreno_${todayKey()}.csv`, 'text/csv;charset=utf-8;');
+  document.getElementById('export-overlay').classList.remove('open');
+  showToast('📊 CSV descargado');
+});
+
+// ── EXPORT JSON ──
+document.getElementById('btn-export-json').addEventListener('click', () => {
+  const data = getData();
+  downloadBlob(JSON.stringify(data, null, 2), `terreno_backup_${todayKey()}.json`, 'application/json');
+  document.getElementById('export-overlay').classList.remove('open');
+  showToast('📦 Backup descargado');
+});
+
+// ── IMPORT JSON ──
+document.getElementById('btn-import-json').addEventListener('click', () => {
+  document.getElementById('import-input').click();
+});
+
+document.getElementById('import-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      const merged = Object.assign({}, getData(), imported);
+      saveData(merged);
+      currentViewDate = todayKey();
+      renderMarkers();
+      updateDateNav();
+      document.getElementById('export-overlay').classList.remove('open');
+      const days = Object.keys(imported).length;
+      const pts  = Object.values(imported).reduce((s, d) => s + d.length, 0);
+      showToast(`Importados ${pts} puntos en ${days} jornadas`);
+    } catch {
+      showToast('Archivo invalido');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ════════════════════════════════════════
 //  INIT
 // ════════════════════════════════════════
 initMap();
-renderMarkers();
-updateDateNav();
-
-// Switch to today if opening fresh
 currentViewDate = todayKey();
 renderMarkers();
 updateDateNav();
