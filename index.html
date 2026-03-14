@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     :root {
       --amber: #F4A01C;
@@ -541,10 +542,10 @@
     <div id="export-subtitle">Exporta o importa todos tus puntos</div>
 
     <button class="export-btn csv" id="btn-export-csv">
-      <span class="btn-icon">📊</span>
+      <span class="btn-icon">📦</span>
       <div class="btn-desc">
-        EXPORTAR CSV
-        <span>Excel · con enlaces al Catastro por cada punto</span>
+        EXPORTAR ZIP
+        <span>CSV para Excel + archivos de audio por punto</span>
       </div>
     </button>
 
@@ -1003,32 +1004,55 @@ document.getElementById('export-overlay').addEventListener('click', e => {
     document.getElementById('export-overlay').classList.remove('open');
 });
 
-// ── EXPORT CSV ──
-document.getElementById('btn-export-csv').addEventListener('click', () => {
+// ── EXPORT ZIP (CSV + audios) ──
+document.getElementById('btn-export-csv').addEventListener('click', async () => {
   const data = getData();
+  const zip = new JSZip();
+  const audioFolder = zip.folder('audios');
+
   const rows = [
-    ['Fecha','Hora','Latitud','Longitud','Nota_voz','URL_Catastro','URL_Maps']
+    ['Fecha','Hora','Latitud','Longitud','Archivo_audio','URL_Catastro','URL_Maps']
   ];
+
   Object.keys(data).sort().forEach(day => {
     data[day].forEach(pin => {
       const catastro = `https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?buscar=S&latitud=${pin.lat}&longitud=${pin.lng}`;
-      const gmaps = `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+      const gmaps    = `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+      let audioFilename = '';
+
+      if (pin.audio) {
+        // base64 data URL → binary
+        const base64 = pin.audio.split(',')[1];
+        const safeTime = pin.time.replace(/:/g, '-');
+        audioFilename = `audios/${day}_${safeTime}_${pin.id}.webm`;
+        audioFolder.file(`${day}_${safeTime}_${pin.id}.webm`, base64, { base64: true });
+      }
+
       rows.push([
         day,
         pin.time,
         pin.lat.toFixed(7),
         pin.lng.toFixed(7),
-        pin.audio ? `Si (${pin.duration || '?'})` : 'No',
+        audioFilename,
         catastro,
         gmaps
       ]);
     });
   });
+
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
-  const BOM = '\uFEFF';
-  downloadBlob(BOM + csv, `terreno_${todayKey()}.csv`, 'text/csv;charset=utf-8;');
+  zip.file('terreno.csv', '\uFEFF' + csv); // BOM para Excel español
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `terreno_${todayKey()}.zip`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
   document.getElementById('export-overlay').classList.remove('open');
-  showToast('📊 CSV descargado');
+  showToast('📦 ZIP descargado con audios');
 });
 
 // ── EXPORT JSON ──
