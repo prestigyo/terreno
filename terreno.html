@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>TERRENO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --amber: #F4A01C;
+      --amber-dim: #c47e0f;
+      --bg: #111010;
+      --surface: rgba(16,15,15,0.92);
+      --surface-solid: #1a1918;
+      --text: #e8e0d0;
+      --text-dim: #8a7f70;
+      --danger: #e05252;
+      --green: #5cba6e;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ── MAP ── */
+    #map {
+      width: 100%;
+      height: 100dvh;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .leaflet-control-attribution { font-size: 9px !important; opacity: 0.5; }
+    .leaflet-control-zoom { display: none; }
+
+    /* ── TOP BAR ── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(244,160,28,0.15);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #app-title {
+      font-family: 'Oswald', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--amber);
+      letter-spacing: 4px;
+      flex-shrink: 0;
+    }
+
+    #date-nav {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+      padding: 4px 8px;
+    }
+
+    #date-nav button {
+      background: none;
+      border: none;
+      color: var(--amber);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+      touch-action: manipulation;
+    }
+
+    #date-nav button:disabled { color: var(--text-dim); opacity: 0.3; }
+
+    #current-date {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text);
+      min-width: 80px;
+      text-align: center;
+    }
+
+    #pin-count {
+      font-size: 10px;
+      color: var(--text-dim);
+      background: rgba(255,255,255,0.05);
+      border-radius: 20px;
+      padding: 2px 8px;
+      border: 1px solid rgba(255,255,255,0.07);
+      flex-shrink: 0;
+    }
+
+    #pin-count span { color: var(--amber); font-weight: 700; }
+
+    /* ── BOTTOM BAR ── */
+    #bottombar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 100;
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(244,160,28,0.15);
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #btn-mark {
+      flex: 1;
+      background: var(--amber);
+      color: #111;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Oswald', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      padding: 16px;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    #btn-mark:active { background: var(--amber-dim); transform: scale(0.97); }
+    #btn-mark.loading { opacity: 0.6; pointer-events: none; }
+
+    #btn-locate {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 16px 14px;
+      font-size: 18px;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.15s;
+    }
+
+    #btn-locate:active { background: rgba(255,255,255,0.12); }
+
+    /* ── VOICE MODAL ── */
+    #voice-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    #voice-overlay.open { display: flex; }
+
+    #voice-sheet {
+      background: var(--surface-solid);
+      border: 1px solid rgba(244,160,28,0.2);
+      border-bottom: none;
+      border-radius: 16px 16px 0 0;
+      width: 100%;
+      max-width: 480px;
+      padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+      animation: slideUp 0.25s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    #voice-sheet h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 2px;
+      color: var(--amber);
+      margin-bottom: 6px;
+    }
+
+    #voice-coords {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    #voice-status {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+
+    #voice-status.recording { color: var(--danger); }
+    #voice-status.done { color: var(--green); }
+
+    #waveform {
+      height: 40px;
+      background: rgba(255,255,255,0.03);
+      border-radius: var(--radius);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      overflow: hidden;
+    }
+
+    .wave-bar {
+      width: 4px;
+      border-radius: 2px;
+      background: var(--amber);
+      height: 6px;
+      transition: height 0.1s;
+    }
+
+    .wave-bar.active {
+      animation: wavePulse 0.6s ease-in-out infinite alternate;
+    }
+
+    @keyframes wavePulse {
+      from { height: 4px; }
+      to   { height: 32px; }
+    }
+
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.05s; }
+    .wave-bar:nth-child(5) { animation-delay: 0.15s; }
+    .wave-bar:nth-child(6) { animation-delay: 0.25s; }
+    .wave-bar:nth-child(7) { animation-delay: 0.08s; }
+    .wave-bar:nth-child(8) { animation-delay: 0.18s; }
+    .wave-bar:nth-child(9) { animation-delay: 0.12s; }
+    .wave-bar:nth-child(10) { animation-delay: 0.22s; }
+
+    #voice-actions { display: flex; gap: 10px; }
+
+    #btn-record {
+      flex: 1;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 1.5px;
+      padding: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: all 0.15s;
+    }
+
+    #btn-record.idle    { background: var(--danger); color: #fff; }
+    #btn-record.rec     { background: #fff; color: var(--danger); }
+    #btn-record.stopped { background: var(--green); color: #fff; pointer-events: none; }
+
+    #btn-save-voice {
+      flex: 1;
+      background: var(--amber);
+      color: #111;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 1.5px;
+      padding: 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: none;
+    }
+
+    #btn-skip-voice {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-dim);
+      border-radius: var(--radius);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 14px 12px;
+      cursor: pointer;
+      touch-action: manipulation;
+      white-space: nowrap;
+    }
+
+    /* ── PIN POPUP ── */
+    .leaflet-popup-content-wrapper {
+      background: var(--surface-solid) !important;
+      border: 1px solid rgba(244,160,28,0.3) !important;
+      border-radius: var(--radius) !important;
+      color: var(--text) !important;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.6) !important;
+    }
+
+    .leaflet-popup-tip { background: var(--surface-solid) !important; }
+
+    .leaflet-popup-content {
+      margin: 12px 14px !important;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+
+    .popup-time { color: var(--amber); font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .popup-coords { color: var(--text-dim); font-size: 10px; margin-bottom: 10px; }
+
+    .popup-audio {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .btn-play {
+      background: var(--amber);
+      border: none;
+      border-radius: 50%;
+      width: 32px; height: 32px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: #111;
+    }
+
+    .btn-play.playing { background: var(--green); }
+
+    .audio-label { color: var(--text-dim); font-size: 10px; }
+
+    .btn-delete-pin {
+      background: none;
+      border: 1px solid rgba(224,82,82,0.3);
+      border-radius: var(--radius);
+      color: var(--danger);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      padding: 4px 8px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 4px;
+    }
+
+    /* ── TOAST ── */
+    #toast {
+      position: fixed;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px);
+      background: rgba(20,20,20,0.95);
+      border: 1px solid rgba(244,160,28,0.4);
+      border-radius: 20px;
+      padding: 8px 18px;
+      font-size: 12px;
+      color: var(--text);
+      z-index: 300;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── CUSTOM MARKER ── */
+    .pin-dot {
+      width: 18px; height: 18px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      background: var(--amber);
+      border: 2px solid #111;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+
+    .pin-dot.has-audio {
+      background: var(--green);
+    }
+
+    /* Zoom controls repositioned */
+    #zoom-btns {
+      position: fixed;
+      right: 14px;
+      bottom: 100px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .zoom-btn {
+      width: 40px; height: 40px;
+      background: var(--surface);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .zoom-btn:active { background: rgba(255,255,255,0.12); }
+
+    /* ── MENU BUTTON ── */
+    #btn-menu {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius);
+      color: var(--text);
+      width: 36px; height: 36px;
+      font-size: 18px;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    #btn-menu:active { background: rgba(255,255,255,0.14); }
+
+    /* ── EXPORT PANEL ── */
+    #export-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: flex-end;
+      justify-content: center;
+    }
+    #export-overlay.open { display: flex; }
+
+    #export-sheet {
+      background: var(--surface-solid);
+      border: 1px solid rgba(244,160,28,0.2);
+      border-bottom: none;
+      border-radius: 16px 16px 0 0;
+      width: 100%;
+      max-width: 480px;
+      padding: 24px 24px calc(24px + env(safe-area-inset-bottom));
+      animation: slideUp 0.25s ease-out;
+    }
+
+    #export-sheet h2 {
+      font-family: 'Oswald', sans-serif;
+      font-size: 16px;
+      letter-spacing: 2px;
+      color: var(--amber);
+      margin-bottom: 4px;
+    }
+
+    #export-subtitle {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    .export-btn {
+      width: 100%;
+      border: none;
+      border-radius: var(--radius);
+      font-family: 'Oswald', sans-serif;
+      font-size: 15px;
+      letter-spacing: 1.5px;
+      padding: 15px 16px;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      transition: opacity 0.15s;
+      text-align: left;
+    }
+    .export-btn:active { opacity: 0.75; }
+    .export-btn.csv  { background: #1e3a2f; color: #5cba6e; border: 1px solid rgba(92,186,110,0.25); }
+    .export-btn.json { background: #1e2f3a; color: #5aaadf; border: 1px solid rgba(90,170,223,0.25); }
+    .export-btn.import { background: rgba(255,255,255,0.04); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.1); }
+    .export-btn .btn-icon { font-size: 20px; flex-shrink: 0; }
+    .btn-desc { display: flex; flex-direction: column; gap: 2px; }
+    .btn-desc span { font-size: 10px; font-family: 'JetBrains Mono', monospace; opacity: 0.7; letter-spacing: 0; font-weight: 400; }
+
+    #btn-close-export {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 10px;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+
+    /* hidden file input */
+    #import-input { display: none; }
+
+  </style>
+</head>
+<body>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="app-title">TERRENO</div>
+  <div id="date-nav">
+    <button id="btn-prev" title="Día anterior">‹</button>
+    <div id="current-date">HOY</div>
+    <button id="btn-next" title="Día siguiente" disabled>›</button>
+  </div>
+  <div id="pin-count"><span id="count-num">0</span> pts</div>
+  <button id="btn-menu" title="Exportar / Importar">⋮</button>
+</div>
+
+<!-- EXPORT PANEL -->
+<div id="export-overlay">
+  <div id="export-sheet">
+    <h2>DATOS</h2>
+    <div id="export-subtitle">Exporta o importa todos tus puntos</div>
+
+    <button class="export-btn csv" id="btn-export-csv">
+      <span class="btn-icon">📊</span>
+      <div class="btn-desc">
+        EXPORTAR CSV
+        <span>Excel · con enlaces al Catastro por cada punto</span>
+      </div>
+    </button>
+
+    <button class="export-btn json" id="btn-export-json">
+      <span class="btn-icon">📦</span>
+      <div class="btn-desc">
+        EXPORTAR JSON
+        <span>Backup completo · incluye notas de voz</span>
+      </div>
+    </button>
+
+    <button class="export-btn import" id="btn-import-json">
+      <span class="btn-icon">📥</span>
+      <div class="btn-desc">
+        IMPORTAR JSON
+        <span>Restaurar datos desde un backup</span>
+      </div>
+    </button>
+
+    <input type="file" id="import-input" accept=".json">
+    <button id="btn-close-export">✕ Cerrar</button>
+  </div>
+</div>
+
+<!-- ZOOM BUTTONS -->
+<div id="zoom-btns">
+  <button class="zoom-btn" id="btn-zoom-in">+</button>
+  <button class="zoom-btn" id="btn-zoom-out">−</button>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottombar">
+  <button id="btn-locate" title="Centrar mapa">⊕</button>
+  <button id="btn-mark">
+    <span>📍</span> MARCAR PUNTO
+  </button>
+</div>
+
+<!-- VOICE MODAL -->
+<div id="voice-overlay">
+  <div id="voice-sheet">
+    <h2>NOTA DE VOZ</h2>
+    <div id="voice-coords">Cargando coordenadas…</div>
+    <div id="voice-status">Pulsa GRABAR para añadir una nota</div>
+    <div id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+    <div id="voice-actions">
+      <button id="btn-record" class="idle">⏺ GRABAR</button>
+      <button id="btn-save-voice">✓ GUARDAR</button>
+      <button id="btn-skip-voice">Sin nota</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════
+//  STORAGE
+// ════════════════════════════════════════
+const STORAGE_KEY = 'terreno_v1';
+
+function getData() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function saveData(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  catch(e) { showToast('⚠️ Almacenamiento lleno'); }
+}
+
+function todayKey() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function formatDateLabel(key) {
+  if (key === todayKey()) return 'HOY';
+  const d = new Date(key + 'T12:00:00');
+  return d.toLocaleDateString('es-ES', { day:'2-digit', month:'short' }).toUpperCase();
+}
+
+function getSortedDays() {
+  return Object.keys(getData()).sort();
+}
+
+// ════════════════════════════════════════
+//  MAP
+// ════════════════════════════════════════
+let map;
+let markersLayer;
+let currentViewDate = todayKey();
+
+function initMap() {
+  map = L.map('map', {
+    zoomControl: false,
+    attributionControl: true
+  }).setView([40.0, -3.7], 6);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
+  }).addTo(map);
+
+  markersLayer = L.layerGroup().addTo(map);
+
+  // Try to center on user
+  navigator.geolocation.getCurrentPosition(pos => {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 14);
+  }, () => {});
+}
+
+function makeMarkerIcon(hasAudio) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="pin-dot ${hasAudio ? 'has-audio' : ''}"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 18],
+    popupAnchor: [0, -20]
+  });
+}
+
+function renderMarkers() {
+  markersLayer.clearLayers();
+  const data = getData();
+  const pins = data[currentViewDate] || [];
+  pins.forEach(pin => addMarkerToMap(pin));
+  document.getElementById('count-num').textContent = pins.length;
+}
+
+function addMarkerToMap(pin) {
+  const marker = L.marker([pin.lat, pin.lng], {
+    icon: makeMarkerIcon(!!pin.audio)
+  });
+
+  const audioHtml = pin.audio
+    ? `<div class="popup-audio">
+         <button class="btn-play" onclick="toggleAudio(this,'${pin.id}')">▶</button>
+         <span class="audio-label">Nota de voz<br>${pin.duration || ''}</span>
+       </div>`
+    : '';
+
+  marker.bindPopup(`
+    <div class="popup-time">${pin.time}</div>
+    <div class="popup-coords">${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}</div>
+    ${audioHtml}
+    <button class="btn-delete-pin" onclick="deletePin('${pin.id}')">✕ Eliminar punto</button>
+  `, { maxWidth: 200 });
+
+  markersLayer.addLayer(marker);
+}
+
+// ════════════════════════════════════════
+//  AUDIO PLAYBACK
+// ════════════════════════════════════════
+let currentAudio = null;
+
+function toggleAudio(btn, pinId) {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+    document.querySelectorAll('.btn-play').forEach(b => {
+      b.textContent = '▶'; b.classList.remove('playing');
+    });
+    return;
+  }
+  const data = getData();
+  let pin = null;
+  Object.values(data).forEach(day => {
+    const found = day.find(p => p.id === pinId);
+    if (found) pin = found;
+  });
+  if (!pin || !pin.audio) return;
+
+  currentAudio = new Audio(pin.audio);
+  btn.textContent = '⏹'; btn.classList.add('playing');
+  currentAudio.play();
+  currentAudio.onended = () => {
+    btn.textContent = '▶'; btn.classList.remove('playing');
+    currentAudio = null;
+  };
+}
+
+// ════════════════════════════════════════
+//  DELETE PIN
+// ════════════════════════════════════════
+function deletePin(pinId) {
+  const data = getData();
+  Object.keys(data).forEach(day => {
+    data[day] = data[day].filter(p => p.id !== pinId);
+    if (data[day].length === 0) delete data[day];
+  });
+  saveData(data);
+  renderMarkers();
+  updateDateNav();
+  map.closePopup();
+  showToast('Punto eliminado');
+}
+
+// ════════════════════════════════════════
+//  DATE NAVIGATION
+// ════════════════════════════════════════
+function updateDateNav() {
+  const days = getSortedDays();
+  // Ensure today is always accessible even with no points
+  if (!days.includes(todayKey())) days.push(todayKey());
+  days.sort();
+
+  const idx = days.indexOf(currentViewDate);
+  document.getElementById('current-date').textContent = formatDateLabel(currentViewDate);
+  document.getElementById('btn-prev').disabled = idx <= 0;
+  document.getElementById('btn-next').disabled = idx >= days.length - 1;
+}
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  const days = getSortedDays();
+  if (!days.includes(todayKey())) days.push(todayKey());
+  days.sort();
+  const idx = days.indexOf(currentViewDate);
+  if (idx > 0) {
+    currentViewDate = days[idx - 1];
+    renderMarkers();
+    updateDateNav();
+  }
+});
+
+document.getElementById('btn-next').addEventListener('click', () => {
+  const days = getSortedDays();
+  if (!days.includes(todayKey())) days.push(todayKey());
+  days.sort();
+  const idx = days.indexOf(currentViewDate);
+  if (idx < days.length - 1) {
+    currentViewDate = days[idx + 1];
+    renderMarkers();
+    updateDateNav();
+  }
+});
+
+// ════════════════════════════════════════
+//  LOCATE / CENTER
+// ════════════════════════════════════════
+document.getElementById('btn-locate').addEventListener('click', () => {
+  navigator.geolocation.getCurrentPosition(pos => {
+    map.setView([pos.coords.latitude, pos.coords.longitude], 16, { animate: true });
+  }, () => showToast('⚠️ No se pudo obtener ubicación'));
+});
+
+document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
+document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+
+// ════════════════════════════════════════
+//  MARK POINT
+// ════════════════════════════════════════
+let pendingPin = null;
+
+document.getElementById('btn-mark').addEventListener('click', () => {
+  const btn = document.getElementById('btn-mark');
+  btn.classList.add('loading');
+  btn.innerHTML = '<span>⌛</span> OBTENIENDO GPS…';
+
+  navigator.geolocation.getCurrentPosition(pos => {
+    btn.classList.remove('loading');
+    btn.innerHTML = '<span>📍</span> MARCAR PUNTO';
+
+    const now = new Date();
+    pendingPin = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      time: now.toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit', second:'2-digit' }),
+      audio: null,
+      duration: null
+    };
+
+    document.getElementById('voice-coords').textContent =
+      `${pendingPin.lat.toFixed(5)}, ${pendingPin.lng.toFixed(5)} · ${pendingPin.time}`;
+    openVoiceModal();
+
+  }, () => {
+    btn.classList.remove('loading');
+    btn.innerHTML = '<span>📍</span> MARCAR PUNTO';
+    showToast('⚠️ Error de GPS. Comprueba permisos.');
+  }, { enableHighAccuracy: true, timeout: 10000 });
+});
+
+// ════════════════════════════════════════
+//  VOICE MODAL
+// ════════════════════════════════════════
+let mediaRecorder = null;
+let audioChunks = [];
+let recordedBlob = null;
+let recordStart = null;
+let isRecording = false;
+const waveBars = document.querySelectorAll('.wave-bar');
+
+function openVoiceModal() {
+  resetVoiceModal();
+  document.getElementById('voice-overlay').classList.add('open');
+}
+
+function closeVoiceModal() {
+  if (mediaRecorder && isRecording) {
+    mediaRecorder.stop();
+  }
+  document.getElementById('voice-overlay').classList.remove('open');
+  resetVoiceModal();
+}
+
+function resetVoiceModal() {
+  isRecording = false;
+  recordedBlob = null;
+  audioChunks = [];
+  mediaRecorder = null;
+
+  const btnRec = document.getElementById('btn-record');
+  btnRec.className = 'idle';
+  btnRec.textContent = '⏺ GRABAR';
+  btnRec.style.display = '';
+
+  document.getElementById('btn-save-voice').style.display = 'none';
+  document.getElementById('voice-status').textContent = 'Pulsa GRABAR para añadir una nota';
+  document.getElementById('voice-status').className = '';
+  waveBars.forEach(b => b.classList.remove('active'));
+}
+
+document.getElementById('btn-record').addEventListener('click', async () => {
+  if (isRecording) {
+    // STOP
+    mediaRecorder.stop();
+    return;
+  }
+
+  // START
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      isRecording = false;
+      recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const duration = Math.round((Date.now() - recordStart) / 1000);
+      const mins = Math.floor(duration/60);
+      const secs = duration % 60;
+      pendingPin.duration = `${mins}:${secs.toString().padStart(2,'0')}`;
+
+      const btnRec = document.getElementById('btn-record');
+      btnRec.className = 'stopped';
+      btnRec.textContent = '✓ GRABADO';
+
+      document.getElementById('btn-save-voice').style.display = '';
+      document.getElementById('voice-status').textContent = `Grabación lista · ${pendingPin.duration}`;
+      document.getElementById('voice-status').className = 'done';
+      waveBars.forEach(b => b.classList.remove('active'));
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    recordStart = Date.now();
+
+    const btnRec = document.getElementById('btn-record');
+    btnRec.className = 'rec';
+    btnRec.textContent = '⏹ PARAR';
+
+    document.getElementById('voice-status').textContent = 'Grabando…';
+    document.getElementById('voice-status').className = 'recording';
+    waveBars.forEach(b => b.classList.add('active'));
+
+  } catch(e) {
+    showToast('⚠️ Sin acceso al micrófono');
+    closeVoiceModal();
+    if (pendingPin) savePin(pendingPin);
+  }
+});
+
+document.getElementById('btn-save-voice').addEventListener('click', () => {
+  if (!recordedBlob || !pendingPin) return;
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    pendingPin.audio = reader.result;
+    closeVoiceModal();
+    savePin(pendingPin);
+  };
+  reader.readAsDataURL(recordedBlob);
+});
+
+document.getElementById('btn-skip-voice').addEventListener('click', () => {
+  closeVoiceModal();
+  if (pendingPin) savePin(pendingPin);
+});
+
+// Close on overlay click
+document.getElementById('voice-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('voice-overlay')) {
+    closeVoiceModal();
+    if (pendingPin) savePin(pendingPin);
+  }
+});
+
+// ════════════════════════════════════════
+//  SAVE PIN
+// ════════════════════════════════════════
+function savePin(pin) {
+  const data = getData();
+  const day = todayKey();
+  if (!data[day]) data[day] = [];
+  data[day].push(pin);
+  saveData(data);
+
+  // If viewing today, add marker live
+  if (currentViewDate === day) {
+    addMarkerToMap(pin);
+    document.getElementById('count-num').textContent = data[day].length;
+    map.setView([pin.lat, pin.lng], Math.max(map.getZoom(), 15), { animate: true });
+  }
+
+  updateDateNav();
+  showToast(pin.audio ? '📍 Punto + nota guardados' : '📍 Punto guardado');
+  pendingPin = null;
+}
+
+// ════════════════════════════════════════
+//  TOAST
+// ════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ════════════════════════════════════════
+//  EXPORT / IMPORT
+// ════════════════════════════════════════
+
+document.getElementById('btn-menu').addEventListener('click', () => {
+  document.getElementById('export-overlay').classList.add('open');
+});
+document.getElementById('btn-close-export').addEventListener('click', () => {
+  document.getElementById('export-overlay').classList.remove('open');
+});
+document.getElementById('export-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('export-overlay'))
+    document.getElementById('export-overlay').classList.remove('open');
+});
+
+// ── EXPORT CSV ──
+document.getElementById('btn-export-csv').addEventListener('click', () => {
+  const data = getData();
+  const rows = [
+    ['Fecha','Hora','Latitud','Longitud','Nota_voz','URL_Catastro','URL_Maps']
+  ];
+  Object.keys(data).sort().forEach(day => {
+    data[day].forEach(pin => {
+      const catastro = `https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?buscar=S&latitud=${pin.lat}&longitud=${pin.lng}`;
+      const gmaps = `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+      rows.push([
+        day,
+        pin.time,
+        pin.lat.toFixed(7),
+        pin.lng.toFixed(7),
+        pin.audio ? `Si (${pin.duration || '?'})` : 'No',
+        catastro,
+        gmaps
+      ]);
+    });
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const BOM = '\uFEFF';
+  downloadBlob(BOM + csv, `terreno_${todayKey()}.csv`, 'text/csv;charset=utf-8;');
+  document.getElementById('export-overlay').classList.remove('open');
+  showToast('📊 CSV descargado');
+});
+
+// ── EXPORT JSON ──
+document.getElementById('btn-export-json').addEventListener('click', () => {
+  const data = getData();
+  downloadBlob(JSON.stringify(data, null, 2), `terreno_backup_${todayKey()}.json`, 'application/json');
+  document.getElementById('export-overlay').classList.remove('open');
+  showToast('📦 Backup descargado');
+});
+
+// ── IMPORT JSON ──
+document.getElementById('btn-import-json').addEventListener('click', () => {
+  document.getElementById('import-input').click();
+});
+
+document.getElementById('import-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      const merged = Object.assign({}, getData(), imported);
+      saveData(merged);
+      currentViewDate = todayKey();
+      renderMarkers();
+      updateDateNav();
+      document.getElementById('export-overlay').classList.remove('open');
+      const days = Object.keys(imported).length;
+      const pts  = Object.values(imported).reduce((s, d) => s + d.length, 0);
+      showToast(`Importados ${pts} puntos en ${days} jornadas`);
+    } catch {
+      showToast('Archivo invalido');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════
+initMap();
+currentViewDate = todayKey();
+renderMarkers();
+updateDateNav();
+</script>
+</body>
+</html>
